@@ -150,5 +150,5 @@ This project currently has **no license**.
 
 ## 👤 Author
 
-**Biswajit N**  
+**Biswajit Nayak**  
 GitHub: https://github.com/Biswajitn23
