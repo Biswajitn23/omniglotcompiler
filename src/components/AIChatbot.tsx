@@ -61,8 +61,9 @@ const AIChatbot = ({ code, language, error, onCodeChange }: AIChatbotProps) => {
         mode === "agent"
           ? `You are an AI coding agent that can directly write and modify code in the user's editor. When the user needs code changes:
 1. Begin with "AGENT_ACTION:" on a new line
-2. Provide the full updated code inside triple backticks with the correct language
+2. Provide the COMPLETE updated code inside triple backticks with the language name (e.g., \`\`\`html, \`\`\`python, \`\`\`javascript)
 3. Follow the code block with a short explanation of what changed
+4. ALWAYS include the full code, not just snippets or partial changes
 For informational responses only, skip AGENT_ACTION and answer normally.`
           : `You are an expert programming assistant. Provide concise, accurate technical guidance based on the user's code, language, and errors.`;
 
@@ -83,16 +84,37 @@ User ${mode === "agent" ? "Request" : "Question"}: ${userMessage}`;
         { temperature: mode === "agent" ? 0.2 : 0.5 },
       );
 
+      console.log("AI Response:", text);
+      console.log("Mode:", mode);
+      console.log("Contains AGENT_ACTION:", text.includes("AGENT_ACTION:"));
+
       // Check if agent mode response contains code action
-      if (mode === "agent" && text.includes("AGENT_ACTION:")) {
-        const codeMatch = text.match(/```[\w]*\n([\s\S]*?)```/);
+      if (mode === "agent") {
+        // Try multiple regex patterns to extract code
+        let codeMatch = text.match(/```(?:[\w]*)\n([\s\S]*?)```/); // Standard: ```html\ncode```
+        if (!codeMatch) {
+          codeMatch = text.match(/```([\s\S]*?)```/); // Without language: ```code```
+        }
+        
+        console.log("Code match found:", !!codeMatch);
+        console.log("onCodeChange available:", !!onCodeChange);
+        
         if (codeMatch && onCodeChange) {
           const extractedCode = codeMatch[1].trim();
+          console.log("Extracted code length:", extractedCode.length);
+          console.log("First 100 chars:", extractedCode.substring(0, 100));
           onCodeChange(extractedCode);
           
           toast({
             title: "Code Updated!",
-            description: "Agent has modified your code.",
+            description: `Agent has modified your ${language.toUpperCase()} code.`,
+          });
+        } else if (!codeMatch) {
+          console.warn("No code block found in response. Check if AI is providing code in triple backticks.");
+          toast({
+            title: "No Code Found",
+            description: "The agent didn't provide code in the expected format. Try asking more specifically.",
+            variant: "destructive",
           });
         }
       }

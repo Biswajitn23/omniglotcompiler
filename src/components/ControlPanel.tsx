@@ -55,6 +55,7 @@ const ControlPanel = ({
           <SelectItem value="swift">Swift</SelectItem>
           <SelectItem value="r">R</SelectItem>
           <SelectItem value="sql">SQL</SelectItem>
+          <SelectItem value="html">HTML</SelectItem>
         </SelectContent>
       </Select>
 

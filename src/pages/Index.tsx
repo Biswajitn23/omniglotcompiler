@@ -70,6 +70,16 @@ fun main() {
 print("Hello, World!")`,
   r: `# R
 print("Hello, World!")`,
+  html: `<!DOCTYPE html>
+<html>
+<head>
+    <title>Hello World</title>
+</head>
+<body>
+    <h1>Hello, World!</h1>
+    <p>This is a simple HTML page.</p>
+</body>
+</html>`,
   sql: `-- SQL
 SELECT 'Hello, World!' AS message;`,
 };
@@ -157,6 +167,19 @@ const Index = () => {
 
     try {
       const startTime = Date.now();
+      
+      // Special handling for HTML - show preview instead of running through Judge0
+      if (language === 'html') {
+        const endTime = Date.now();
+        setExecutionTime(endTime - startTime);
+        setOutput(`HTML Preview:\n\n${code}`);
+        toast({
+          title: "HTML Ready",
+          description: "HTML preview is displayed below. Open in browser to see rendered output.",
+        });
+        setIsRunning(false);
+        return;
+      }
       
       // Judge0 Language IDs (Judge0 API)
       const languageIds: Record<string, number> = {
@@ -395,17 +418,185 @@ const Index = () => {
   };
 
   const handleFormat = () => {
-    // Basic formatting - add proper indentation
-    const formatted = code
-      .split("\n")
-      .map((line) => line.trim())
-      .join("\n");
-    setCode(formatted);
-    
-    toast({
-      title: "Formatted",
-      description: "Code has been formatted.",
-    });
+    try {
+      let formatted = code;
+      const lines = code.split('\n');
+      
+      // Language-specific formatting
+      if (language === 'python') {
+        // Python: Smart indentation based on colons and keywords
+        let indent = 0;
+        const result: string[] = [];
+        const indentKeywords = ['if', 'elif', 'else', 'for', 'while', 'def', 'class', 'try', 'except', 'finally', 'with'];
+        
+        for (let i = 0; i < lines.length; i++) {
+          const trimmed = lines[i].trim();
+          
+          if (!trimmed) {
+            result.push('');
+            continue;
+          }
+          
+          // Check if line should decrease indent (else, elif, except, finally)
+          if (trimmed.startsWith('else:') || trimmed.startsWith('elif ') || 
+              trimmed.startsWith('except') || trimmed.startsWith('finally:')) {
+            indent = Math.max(0, indent - 1);
+          }
+          
+          // Add the line with current indentation
+          result.push('    '.repeat(indent) + trimmed);
+          
+          // Check if next line should increase indent
+          if (trimmed.endsWith(':')) {
+            indent++;
+          }
+          
+          // Check if we need to decrease indent (look for dedent patterns)
+          // If next non-empty line doesn't start with indentation keywords and previous ended with :
+          const nextLine = lines[i + 1]?.trim();
+          if (nextLine && !trimmed.endsWith(':') && 
+              !indentKeywords.some(kw => trimmed.startsWith(kw))) {
+            // Keep indent as is
+          }
+          
+          // Detect return/break/continue/pass at end of blocks
+          if (trimmed.startsWith('return') || trimmed.startsWith('break') || 
+              trimmed.startsWith('continue') || trimmed === 'pass') {
+            // Check if next line is at lower indent level
+            const nextNonEmpty = lines.slice(i + 1).find(l => l.trim());
+            if (nextNonEmpty) {
+              const nextIndent = nextNonEmpty.search(/\S/);
+              const currentIndent = indent * 4;
+              if (nextIndent < currentIndent) {
+                indent = Math.max(0, Math.floor(nextIndent / 4));
+              }
+            }
+          }
+        }
+        
+        formatted = result.join('\n');
+      } else if (language === 'javascript' || language === 'typescript') {
+        // JS/TS: Basic formatting with 2 spaces
+        let indent = 0;
+        const result: string[] = [];
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            result.push('');
+            continue;
+          }
+          
+          // Decrease indent for closing braces
+          if (trimmed.startsWith('}') || trimmed.startsWith(']')) {
+            indent = Math.max(0, indent - 1);
+          }
+          
+          result.push('  '.repeat(indent) + trimmed);
+          
+          // Increase indent for opening braces
+          const openBraces = (trimmed.match(/[\{]/g) || []).length;
+          const closeBraces = (trimmed.match(/[\}]/g) || []).length;
+          indent += openBraces - closeBraces;
+          indent = Math.max(0, indent);
+        }
+        
+        formatted = result.join('\n');
+      } else if (['c', 'cpp', 'java', 'csharp'].includes(language)) {
+        // C-style languages: 4 spaces
+        let indent = 0;
+        const result: string[] = [];
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            result.push('');
+            continue;
+          }
+          
+          // Decrease indent for closing braces
+          if (trimmed.startsWith('}')) {
+            indent = Math.max(0, indent - 1);
+          }
+          
+          result.push('    '.repeat(indent) + trimmed);
+          
+          // Increase indent for opening braces
+          if (trimmed.endsWith('{')) {
+            indent++;
+          }
+        }
+        
+        formatted = result.join('\n');
+      } else if (language === 'sql') {
+        // SQL: Uppercase keywords
+        const keywords = [
+          'select', 'from', 'where', 'join', 'on', 'group by', 'order by', 
+          'having', 'insert', 'into', 'values', 'update', 'set', 'delete', 
+          'create', 'table', 'alter', 'drop', 'and', 'or', 'as', 'by', 
+          'asc', 'desc', 'limit', 'offset', 'inner', 'left', 'right', 
+          'outer', 'union', 'distinct', 'count', 'sum', 'avg', 'min', 'max'
+        ];
+        
+        formatted = code;
+        keywords.forEach(keyword => {
+          const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+          formatted = formatted.replace(regex, keyword.toUpperCase());
+        });
+      } else if (language === 'html') {
+        // HTML: Smart indentation based on tags
+        let indent = 0;
+        const result: string[] = [];
+        const selfClosingTags = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          
+          if (!trimmed) {
+            result.push('');
+            continue;
+          }
+          
+          // Check for closing tag at start
+          if (trimmed.startsWith('</')) {
+            indent = Math.max(0, indent - 1);
+          }
+          
+          // Add the line with current indentation
+          result.push('  '.repeat(indent) + trimmed);
+          
+          // Check if line opens a tag (but not self-closing or inline close)
+          const openTagMatch = trimmed.match(/^<([a-zA-Z][a-zA-Z0-9]*)/);
+          const hasClosingTag = trimmed.includes('</');
+          const isSelfClosing = trimmed.endsWith('/>') || (openTagMatch && selfClosingTags.includes(openTagMatch[1].toLowerCase()));
+          
+          if (openTagMatch && !hasClosingTag && !isSelfClosing) {
+            indent++;
+          }
+          
+          // If line has both opening and closing tag, don't change indent
+          // Already handled by hasClosingTag check above
+        }
+        
+        formatted = result.join('\n');
+      } else {
+        // Generic: Just clean whitespace
+        formatted = lines.map(line => line.trimEnd()).join('\n');
+      }
+      
+      setCode(formatted);
+      toast({
+        title: "Code Formatted",
+        description: `${language.toUpperCase()} code has been formatted successfully.`,
+      });
+    } catch (error) {
+      console.error('Format error:', error);
+      toast({
+        title: "Format Failed",
+        description: "Could not format code. Please check your syntax.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -549,6 +740,7 @@ Respond ONLY with the fixed code. Do not include explanations, markdown, or code
                 output={output}
                 error={error}
                 executionTime={executionTime}
+                language={language}
               />
             </div>
             {error && (
@@ -569,9 +761,11 @@ Respond ONLY with the fixed code. Do not include explanations, markdown, or code
                 }}
               />
             )}
-            <div className="flex-1 min-h-[150px]">
-              <InputBox value={input} onChange={setInput} />
-            </div>
+            {language !== 'html' && (
+              <div className="flex-1 min-h-[150px]">
+                <InputBox value={input} onChange={setInput} />
+              </div>
+            )}
           </div>
         </div>
       </div>

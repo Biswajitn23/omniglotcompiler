@@ -26,6 +26,7 @@ const CodeEditor = ({ value, onChange, language }: CodeEditorProps) => {
       swift: "swift",
       r: "r",
       sql: "sql",
+      html: "html",
     };
     return languageMap[lang] || "plaintext";
   };
