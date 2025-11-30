@@ -3,9 +3,9 @@ import { Bot, Send, X, Loader2, Sparkles, MessageSquare, Zap } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { toast } from "@/hooks/use-toast";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { callOpenAI } from "@/lib/openai";
 
 interface Message {
   role: "user" | "assistant";
@@ -41,8 +41,8 @@ const AIChatbot = ({ code, language, error, onCodeChange }: AIChatbotProps) => {
         {
           role: "assistant",
           content: mode === "agent"
-            ? `Hi! I'm your AI Agent powered by Gemini. I can directly control your code editor to:\n\n• Write complete code solutions\n• Fix errors automatically\n• Modify and improve your code\n• Run debugging operations\n\nJust tell me what you need and I'll take care of it!`
-            : `Hi! I'm your AI coding assistant powered by Gemini. I can help you with:\n\n• Debugging errors\n• Code explanations\n• Code optimization\n• Best practices\n• Algorithm suggestions\n\nHow can I help you today?`,
+            ? `Hi! I'm your AI Agent powered by Perplexity AI. I can directly control your code editor to:\n\n• Write complete code solutions\n• Fix errors automatically\n• Modify and improve your code\n• Run debugging operations\n\nJust tell me what you need and I'll take care of it!`
+            : `Hi! I'm your AI coding assistant powered by Perplexity AI. I can help you with:\n\n• Debugging errors\n• Code explanations\n• Code optimization\n• Best practices\n• Algorithm suggestions\n\nHow can I help you today?`,
         },
       ]);
     }
@@ -57,55 +57,31 @@ const AIChatbot = ({ code, language, error, onCodeChange }: AIChatbotProps) => {
     setIsLoading(true);
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      console.log("API Key present:", !!apiKey);
-      
-      if (!apiKey || apiKey === "your-gemini-api-key-here") {
-        throw new Error("Gemini API key not configured");
-      }
+      const systemPrompt =
+        mode === "agent"
+          ? `You are an AI coding agent that can directly write and modify code in the user's editor. When the user needs code changes:
+1. Begin with "AGENT_ACTION:" on a new line
+2. Provide the full updated code inside triple backticks with the correct language
+3. Follow the code block with a short explanation of what changed
+For informational responses only, skip AGENT_ACTION and answer normally.`
+          : `You are an expert programming assistant. Provide concise, accurate technical guidance based on the user's code, language, and errors.`;
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash"
-      });
-
-      let prompt = "";
-      
-      if (mode === "agent") {
-        prompt = `You are an AI coding agent that can directly write and modify code. You have access to the user's code editor.
-
-Language: ${language}
+      const contextPrompt = `Language: ${language}
 Current Code:
 \`\`\`${language}
 ${code}
 \`\`\`
 ${error ? `\nCurrent Error:\n${error}` : ""}
 
-User Request: ${userMessage}
+User ${mode === "agent" ? "Request" : "Question"}: ${userMessage}`;
 
-IMPORTANT: If the user asks you to write, modify, or fix code:
-1. Start your response with "AGENT_ACTION:" on a new line
-2. Follow with the complete corrected code wrapped in triple backticks with the language
-3. After the code, explain what you did
-
-If the user just wants information or explanation, respond normally without AGENT_ACTION.`;
-      } else {
-        prompt = `You are an expert programming assistant. Here's the context:
-Language: ${language}
-Current Code:
-\`\`\`${language}
-${code}
-\`\`\`
-${error ? `\nCurrent Error:\n${error}` : ""}
-
-User Question: ${userMessage}
-
-Provide helpful, concise, and accurate programming advice.`;
-      }
-
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const text = await callOpenAI(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: contextPrompt },
+        ],
+        { temperature: mode === "agent" ? 0.2 : 0.5 },
+      );
 
       // Check if agent mode response contains code action
       if (mode === "agent" && text.includes("AGENT_ACTION:")) {
@@ -126,13 +102,13 @@ Provide helpful, concise, and accurate programming advice.`;
         { role: "assistant", content: text.replace("AGENT_ACTION:", "").trim() },
       ]);
     } catch (err: any) {
-      console.error("Gemini API Error:", err);
+      console.error("OpenAI API Error:", err);
       let errorMessage = "Sorry, I encountered an error. ";
       
       if (err.message?.includes("API key")) {
-        errorMessage += "Please make sure your Gemini API key is configured correctly in the .env file.";
+        errorMessage += "Please make sure your Perplexity API key is configured correctly in the .env file.";
       } else if (err.message?.includes("quota") || err.message?.includes("429")) {
-        errorMessage += "API quota exceeded. Please try again later or check your API key limits.";
+        errorMessage += "API quota exceeded. Please try again later or check your API key limits at https://www.perplexity.ai/settings/api";
       } else if (err.message?.includes("blocked")) {
         errorMessage += "The content was blocked by safety filters. Try rephrasing your question.";
       } else {

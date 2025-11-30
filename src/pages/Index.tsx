@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { toast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
 import { supabase } from "@/integrations/supabase/client";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import Header from "@/components/Header";
 import CodeEditor from "@/components/CodeEditor";
 import ControlPanel from "@/components/ControlPanel";
@@ -10,6 +9,7 @@ import OutputConsole from "@/components/OutputConsole";
 import InputBox from "@/components/InputBox";
 import AIChatbot from "@/components/AIChatbot";
 import ErrorSolver from "@/components/ErrorSolver";
+import { callOpenAI } from "@/lib/openai";
 
 const defaultCode: Record<string, string> = {
   python: `# Python
@@ -470,19 +470,9 @@ const Index = () => {
     });
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey === "your-gemini-api-key-here") {
-        throw new Error("Gemini API key not configured");
-      }
+      const systemPrompt = `You are an expert ${language} programmer. When asked to fix code, reply with the fully corrected source ready to paste into the editor.`;
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-      const prompt = `You are an expert ${language} programmer. Fix this code that has an error.
-
-Language: ${language}
-
-Current Code:
+      const prompt = `Current Code:
 \`\`\`${language}
 ${code}
 \`\`\`
@@ -490,11 +480,15 @@ ${code}
 Error Message:
 ${error}
 
-IMPORTANT: Respond ONLY with the fixed code. Do not include any explanations, markdown formatting, or code block markers. Just provide the raw corrected code that can be directly used.`;
+Respond ONLY with the fixed code. Do not include explanations, markdown, or code fences — just the raw corrected code.`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      let text = response.text().trim();
+      let text = await callOpenAI(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt },
+        ],
+        { temperature: 0.15 },
+      );
 
       // Remove code block markers if present
       text = text.replace(/```[\w]*\n?/g, '').trim();

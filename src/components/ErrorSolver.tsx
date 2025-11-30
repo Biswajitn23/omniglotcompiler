@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Wand2, Loader2, CheckCircle2, Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { toast } from "@/hooks/use-toast";
+import { callOpenAI } from "@/lib/openai";
 
 interface ErrorSolverProps {
   code: string;
@@ -33,21 +33,9 @@ const ErrorSolver = ({ code, language, error, onSolutionGenerated, onCodeFixed }
     setSolution("");
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey === "your-gemini-api-key-here") {
-        throw new Error("Gemini API key not configured");
-      }
+      const systemPrompt = `You are an expert ${language} programmer and debugging assistant. Carefully analyze code, runtime errors, and provide actionable fixes.`;
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash"
-      });
-
-      const prompt = `You are an expert ${language} programmer and debugging assistant. Analyze this error and provide a solution.
-
-Language: ${language}
-
-Code:
+      const prompt = `Code:
 \`\`\`${language}
 ${code}
 \`\`\`
@@ -56,16 +44,20 @@ Error Message:
 ${error}
 
 Please provide:
-1. **Error Explanation**: What caused this error?
-2. **Solution**: How to fix it?
-3. **Fixed Code**: Provide the corrected version of the code (if applicable)
-4. **Prevention Tips**: How to avoid this error in the future?
+1. Error Explanation — why it happened
+2. Solution — how to fix it
+3. Fixed Code — corrected code if applicable
+4. Prevention Tips — how to avoid repeating it
 
-Format your response clearly with sections.`;
+Format the response using the numbered sections above.`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const text = await callOpenAI(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt },
+        ],
+        { temperature: 0.2 },
+      );
 
       setSolution(text);
       onSolutionGenerated(text);
@@ -78,7 +70,7 @@ Format your response clearly with sections.`;
       console.error("Error Analysis Failed:", err);
       toast({
         title: "Error",
-        description: "Failed to analyze error. Check your Gemini API key configuration.",
+        description: "Failed to analyze error. Check your OpenAI API key configuration.",
         variant: "destructive",
       });
     } finally {
@@ -99,21 +91,9 @@ Format your response clearly with sections.`;
     setIsFixing(true);
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey === "your-gemini-api-key-here") {
-        throw new Error("Gemini API key not configured");
-      }
+      const systemPrompt = `You are an expert ${language} programmer. Produce corrected source code ready to paste into the editor.`;
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash"
-      });
-
-      const prompt = `You are an expert ${language} programmer. Fix this code that has an error.
-
-Language: ${language}
-
-Current Code:
+      const prompt = `Current Code:
 \`\`\`${language}
 ${code}
 \`\`\`
@@ -121,11 +101,15 @@ ${code}
 Error Message:
 ${error}
 
-IMPORTANT: Respond ONLY with the fixed code. Do not include any explanations, markdown formatting, or code block markers. Just provide the raw corrected code that can be directly used.`;
+Respond ONLY with the fixed code. Do not include explanations or markdown fences — just the raw corrected code.`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      let text = response.text().trim();
+      let text = await callOpenAI(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt },
+        ],
+        { temperature: 0.1 },
+      );
 
       // Remove code block markers if present
       text = text.replace(/```[\w]*\n?/g, '').trim();
@@ -141,7 +125,7 @@ IMPORTANT: Respond ONLY with the fixed code. Do not include any explanations, ma
       console.error("Auto-fix Failed:", err);
       toast({
         title: "Error",
-        description: "Failed to auto-fix code. Check your Gemini API key configuration.",
+        description: "Failed to auto-fix code. Check your OpenAI API key configuration.",
         variant: "destructive",
       });
     } finally {
